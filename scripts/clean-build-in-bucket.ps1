@@ -1,4 +1,4 @@
-param
+﻿param
 (
     $awsKey,
     $awsSecret,

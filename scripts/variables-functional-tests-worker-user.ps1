@@ -1,0 +1,2 @@
+$functionalTestsWorkerRemoteUser = ""
+$functionalTestsWorkerRemoteUserPassword = ""

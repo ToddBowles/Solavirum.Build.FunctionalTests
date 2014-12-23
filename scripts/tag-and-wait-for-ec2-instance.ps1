@@ -1,4 +1,4 @@
-param
+﻿param
 (
     $awsKey,
     $awsSecret,
@@ -43,8 +43,6 @@ function WaitForEC2InstanceToReachState
         }
     }
 }
-
-import-module "C:\Program Files (x86)\AWS Tools\PowerShell\AWSPowerShell\AWSPowerShell.psd1"
 
 function All 
 {
@@ -113,18 +111,50 @@ function WaitForEC2InstanceToBeReady
     }
 }
 
-$tags = @()
-$nameTag = new-object Amazon.EC2.Model.Tag
-$nameTag.Key = "Name"
-$nameTag.Value = "[SCRIPT] $buildIdentifier Functional Tests"
-$tags += $nameTag
-$expireTag = new-object Amazon.EC2.Model.Tag
-$expireTag.Key = "expire"
-$expireTag.Value = "true"
-$tags += $expireTag
+function NameEC2Instance
+{
+    param
+    (
+        [string]$awsKey,
+        [string]$awsSecret,
+        [string]$awsRegion,
+        [string]$instanceid,
+        [string]$name
+    )
 
-write-host "Tagging Instance."
-New-EC2Tag -Resource $instanceid -Tag $tags -AccessKey $awsKey -SecretKey $awsSecret -Region $awsRegion
+    $tags = @()
+    $nameTag = new-object Amazon.EC2.Model.Tag
+    $nameTag.Key = "Name"
+    $nameTag.Value = "$name"
+    $tags += $nameTag
+
+    write-host "Naming Instance [$instanceid] [$name]."
+    New-EC2Tag -Resource $instanceid -Tag $tags -AccessKey $awsKey -SecretKey $awsSecret -Region $awsRegion
+}
+
+function MarkEC2InstanceAsExpirable
+{
+    param
+    (
+        [string]$awsKey,
+        [string]$awsSecret,
+        [string]$awsRegion,
+        [string]$instanceid
+    )
+
+    $tags = @()
+
+    $expireTag = new-object Amazon.EC2.Model.Tag
+    $expireTag.Key = "expire"
+    $expireTag.Value = "true"
+    $tags += $expireTag
+
+    write-host "Marking Instance [$instanceid] as expirable. It will be automatically terminated after some period (hours)."
+    New-EC2Tag -Resource $instanceid -Tag $tags -AccessKey $awsKey -SecretKey $awsSecret -Region $awsRegion
+}
+
+NameEC2Instance $awsKey $awsSecret $awsRegion $instanceid "[SCRIPT] $buildIdentifier Functional Tests Worker"
+MarkEC2InstanceAsExpirable $awsKey $awsSecret $awsRegion $instanceid
 
 $running = WaitForEC2InstanceToReachState $awskey $awsSecret $awsRegion $instanceid "running"
 $ready = WaitForEC2InstanceToBeReady $awskey $awsSecret $awsRegion $instanceid

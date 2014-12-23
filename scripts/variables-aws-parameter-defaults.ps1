@@ -1,0 +1,4 @@
+$defaultAWSKey=""
+$defaultAWSSecret=""
+$defaultAWSRegion=""
+$defaultAWSBucket=""

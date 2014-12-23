@@ -1,64 +1,47 @@
-param
+﻿param
 (
-    $awsKey,
-    $awsSecret,
-    $awsRegion,
-    $awsBucket,
-    $buildIdentifier,
-    $fullyQualifiedPathToTestDefinitionsDirectory,
-    $pathToInstaller,
-    $fullyQualifiedPathTo7zip
+    [string]$awsKey,
+    [string]$awsSecret,
+    [string]$awsRegion,
+    [string]$awsBucket,
+    [string]$buildIdentifier,
+    [string]$fullyQualifiedPathToTestDefinitionsDirectory,
+    [string]$fullyQualifiedPathToInstaller,
+    [string]$fullyQualifiedPathTo7Zip
 )
 
-if (-not ($pathToInstaller -like '*' + $buildIdentifier + '*'))
+try
 {
-    write-error "The installer did not match the build identifier."
-    exit 1
+    $scriptDirectoryPath = Split-Path $script:MyInvocation.MyCommand.Path
+
+    . "$scriptDirectoryPath\functions-io.ps1"
+    . "$scriptDirectoryPath\functions-s3.ps1"
+    . "$scriptDirectoryPath\functions-compression.ps1"
+
+    $installerFile = CreateFileInfoAndCheckExistence $fullyQualifiedPathToInstaller
+    $testDefinitionsDirectory = CreateDirectoryInfoAndCheckExistence $fullyQualifiedPathToTestDefinitionsDirectory
+    $7ZipExecutableFile = CreateFileInfoAndCheckExistence $fullyQualifiedPathTo7Zip
+
+    $zippedTestsFile = ZipDirectory $fullyQualifiedPathTo7Zip $($testDefinitionsDirectory.FullName) "TestDefinitions"
+
+    $installerS3Key = UploadFileToS3 $awsKey $awsSecret $awsRegion $awsBucket $installerFile "$buildIdentifier\$($installerFile.Name)"
+    $testDefinitionsS3Key = UploadFileToS3 $awsKey $awsSecret $awsRegion $awsBucket $zippedTestsFile "$buildIdentifier\$($zippedTestsFile.Name)"
+
+    write-host "Uploads Successful"
+
+    $uploadResult = new-object psobject -Property @{ 
+        InstallerS3Key = $installerS3Key 
+        TestDefinitionsS3Key = $testDefinitionsS3Key
+    }
+
+    return $uploadResult
 }
 
-$installerFile = new-object System.IO.FileInfo($pathToInstaller)
-
-if (!$installerFile.Exists)
+finally
 {
-    write-error "The Installer (supposed to be at [$($installerFile.FullName)]) does not exist."
-    exit 1
+    if ($zippedTestsFile -ne $null -and $zippedTestsFile.Exists)
+    {
+        write-host "Deleting temporary zip file [$($zippedTestsFile.FullName)]"
+        $zippedTestsFile.Delete();
+    }
 }
-
-$testDefinitionsDirectory = new-object System.IO.DirectoryInfo($fullyQualifiedPathToTestDefinitionsDirectory)
-
-if (!$testDefinitionsDirectory.Exists)
-{
-    write-error "The Test Definitions (supposed to be at [$($testDefinitionsDirectory.FullName)]) do not exist."
-    exit 1
-}
-
-$7zipExecutableFile = new-object System.IO.FileInfo($fullyQualifiedPathTo7zip)
-
-if (!$7zipExecutableFile.Exists)
-{
-    write-error "The 7Zip executable (supposed to be at [$($7zipExecutableFile.FullName)]) does not exist."
-    exit 1
-}
-
-$zippedTestsFile = new-object System.IO.FileInfo("C:\working\" + $buildIdentifier + '\Tests.7z')
-if ($zippedTestsFile.Exists)
-{
-    write-output "Zip file containing test definitions exists at [$($zippedTestsFile.Fullname)]. Deleting."
-    $zippedTestsFile.Delete();
-}
-
-write-output "Zipping Test Definitions at [$($testDefinitionsDirectory.FullName)] into file [$($zippedTestsFile.FullName)] using 7Zip at [$($7zipExecutableFile.FullName)]."
-& $fullyQualifiedPathTo7zip a "$($zippedTestsFile.FullName)" "$($testDefinitionsDirectory.FullName)\*"
-
-$remoteInstallerFileKey = $buildIdentifier + "\" + $installerFile.Name
-write-output "Uploading Gateway Installer from [$($installerFile.FullName)] to [$remoteInstallerFileKey]."
-Write-S3Object -BucketName $awsBucket -Key $remoteInstallerFileKey -File $installerFile.FullName -Region $awsRegion -AccessKey $awsKey -SecretKey $awsSecret
-
-$remoteFunctionalTestsDefinitionsFileKey = $buildIdentifier + "\" + $zippedTestsFile.Name
-write-output "Uploading Test Definitions Zip from [$($zippedTestsFile.FullName)] to [$remoteFunctionalTestsDefinitionsFileKey]."
-Write-S3Object -BucketName $awsBucket -Key $remoteFunctionalTestsDefinitionsFileKey -File $zippedTestsFile.FullName -Region $awsRegion -AccessKey $awsKey -SecretKey $awsSecret
-
-write-output "Uploads Successful"
-
-write-output "Deleting temporary zip file [$($zippedTestsFile.FullName)]"
-$zippedTestsFile.Delete();
